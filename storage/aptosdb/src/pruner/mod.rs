@@ -130,8 +130,12 @@ impl Pruner {
         self.ledger_prune_window
     }
 
+    pub fn get_least_readable_version_by_pruner_index(&self, pruner_index: PrunerIndex) -> Version {
+        self.least_readable_version.lock()[pruner_index as usize]
+    }
+
     pub fn get_least_readable_ledger_version(&self) -> Version {
-        self.least_readable_version.lock()[LedgerPrunerIndex as usize]
+        self.get_least_readable_version_by_pruner_index(LedgerPrunerIndex)
     }
     /// Sends pruning command to the worker thread when necessary.
     pub fn maybe_wake_pruner(&self, latest_version: Version) {

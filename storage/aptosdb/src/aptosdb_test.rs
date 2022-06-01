@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use crate::{
-    get_first_seq_num_and_limit, test_helper,
+    get_first_seq_num_and_limit,
+    pruner::Pruner,
+    test_helper,
     test_helper::{arb_blocks_to_commit, put_as_state_root, put_transaction_info},
     AptosDB, ROCKSDB_PROPERTIES,
 };
+use aptos_config::config::StoragePrunerConfig;
 use aptos_crypto::{hash::CryptoHash, HashValue};
 use aptos_temppath::TempPath;
 use aptos_types::{
@@ -14,8 +17,9 @@ use aptos_types::{
     transaction::{ExecutionStatus, TransactionInfo, PRE_GENESIS_VERSION},
 };
 use proptest::prelude::*;
+use std::sync::Arc;
 use std::time::Duration;
-use storage_interface::{DbReader, Order, TreeState};
+use storage_interface::{DbReader, DbWriter, Order, TreeState};
 use test_helper::{test_save_blocks_impl, test_sync_transactions_impl};
 
 proptest! {
@@ -29,6 +33,35 @@ proptest! {
     #[test]
     fn test_sync_transactions(input in arb_blocks_to_commit()) {
         test_sync_transactions_impl(input);
+    }
+
+    #[test]
+    fn test_error_if_version_is_pruned(input in arb_blocks_to_commit()) {
+        let tmp_dir = TempPath::new();
+        let aptos_db = AptosDB::new_for_test(&tmp_dir);
+        let pruner = Pruner::new(
+            Arc::clone(&aptos_db.db),
+            StoragePrunerConfig {
+                state_store_prune_window: Some(0),
+                ledger_prune_window: Some(0),
+                pruning_batch_size: 1,
+            },
+            Arc::clone(&aptos_db.transaction_store),
+            Arc::clone(&aptos_db.ledger_store),
+            Arc::clone(&aptos_db.event_store),
+        );
+        let mut next_ledger_version = 0;
+        for (_, (transactions_to_commit, ledger_info_with_sigs)) in input.iter().enumerate() {
+            aptos_db
+                .save_transactions(
+                    transactions_to_commit,
+                    next_ledger_version, /* first_version */
+                    Some(ledger_info_with_sigs),
+            )
+            .unwrap();
+            next_ledger_version += transactions_to_commit.len() as u64;
+        }
+        assert!(aptos_db.get_transaction_outputs(0, 20, 30).is_ok())
     }
 }
 
