@@ -1,0 +1,10 @@
+
+runs:
+  using: composite
+  steps:
+    steps:
+      - uses: actions/checkout@v3
+      - run: sudo apt-get update
+      - run: sudo apt-get install build-essential ca-certificates clang curl git libpq-dev libssl-dev pkg-config --no-install-recommends --assume-yes
+      - run: curl https://sh.rustup.rs -sSf | sh -s -- -y --default-toolchain stable
+      - run: cat $HOME/.cargo/env >> $BASH_ENV

@@ -1,0 +1,65 @@
+name: "Ecosystem"
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - devnet
+      - testnet
+      - auto
+      - canary
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version-file: .node-version
+      # install packages for examples
+      - run: cd ./ecosystem/typescript/sdk/examples/typescript && yarn install
+      - run: cd ./ecosystem/typescript/sdk/examples/javascript && yarn install
+      # Run package build+lint + tests
+      - run: cd ./ecosystem/typescript/sdk && yarn install
+      - run: cd ./ecosystem/typescript/sdk && yarn lint
+      - run: cd ./ecosystem/typescript/sdk && yarn fmt:check
+      # Run typescript indexer server linting
+      - run: cd ./ecosystem/indexer-server/typescript && yarn install
+      - run: cd ./ecosystem/indexer-server/typescript && yarn lint
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - id: auth
+        name: "Authenticate to Google Cloud"
+        uses: "google-github-actions/auth@v0"
+        with:
+          create_credentials_file: false
+          token_format: "access_token"
+          workload_identity_provider: ${{ secrets.GCP_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ secrets.GCP_SERVICE_ACCOUNT_EMAIL }}
+
+      - name: Login to Google Artifact Registry
+        uses: docker/login-action@v2
+        with:
+          registry: us-west1-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.auth.outputs.access_token }}
+
+      - uses: actions/setup-node@v3
+        with:
+          node-version-file: .node-version
+          
+      - run: docker-compose up --detach
+        working-directory: docker/compose/validator-testnet
+        env:
+          IMAGE_TAG: ${{ github.sha }}
+          VALIDATOR_IMAGE_REPO: ${{ secrets.GCP_DOCKER_ARTIFACT_REPO }}/validator
+          FAUCET_IMAGE_REPO: ${{ secrets.GCP_DOCKER_ARTIFACT_REPO }}/faucet
+      # Run package install, test, build
+      - run: cd ./ecosystem/typescript/sdk && yarn install
+      - run: cd ./ecosystem/typescript/sdk && yarn test
+      - run: cd ./ecosystem/typescript/sdk && yarn build
